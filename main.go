@@ -48,11 +48,6 @@ type Game struct {
 	Tick     int
 	GameOver bool
 
-	// Animated rotation fields
-	AnimatingRotation bool
-	RotationTarget    int
-	RotationProgress  float64
-
 	// Score state
 	Score int
 	Level int
@@ -98,7 +93,7 @@ func rotateCoord90CW(c Coord) Coord {
 	return Coord{X: 48 - c.Y, Y: c.X}
 }
 
-// rotateBoard rotates the grid, active block and paths.
+// rotateBoard rotates the locked blocks around the center.
 func (g *Game) rotateBoard(deg int) {
 	steps := ((deg % 360) + 360) % 360 / 90
 	for i := 0; i < steps; i++ {
@@ -110,12 +105,6 @@ func (g *Game) rotateBoard(deg int) {
 			}
 		}
 		g.Grid = newGrid
-		if g.Active != nil {
-			g.Active.Pos = rotateCoord90CW(g.Active.Pos)
-			for j := range g.Active.Path {
-				g.Active.Path[j] = rotateCoord90CW(g.Active.Path[j])
-			}
-		}
 		g.Rotation = (g.Rotation + 90) % 360
 	}
 }
@@ -251,42 +240,22 @@ func (g *Game) step() {
 	g.Active.Path = g.Active.Path[1:]
 }
 
-// StartRotation initiates a smooth 90 degree rotation.
-func (g *Game) StartRotation(degrees int) {
-	if g.AnimatingRotation {
-		return
-	}
-	g.AnimatingRotation = true
-	g.RotationTarget = (g.Rotation + degrees) % 360
-	g.RotationProgress = 0
-}
-
 // Update handles input and game logic each frame.
 func (g *Game) Update() error {
 	if g.GameOver {
 		return nil
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyLeft) {
-		g.StartRotation(270)
+		g.rotateBoard(270)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyRight) {
-		g.StartRotation(90)
+		g.rotateBoard(90)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		return ebiten.Termination
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyDown) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		g.step()
-	}
-
-	if g.AnimatingRotation {
-		g.RotationProgress += 6
-		if g.RotationProgress >= 90 {
-			g.rotateBoard((g.RotationTarget - g.Rotation + 360) % 360)
-			g.AnimatingRotation = false
-			g.RotationProgress = 0
-		}
-		return nil
 	}
 
 	g.Tick++
@@ -377,17 +346,11 @@ func (g *Game) spawnParticles(x, y int) {
 // Draw renders the entire game scene.
 func (g *Game) Draw(screen *ebiten.Image) {
 	size := 16
-	angle := float64(g.Rotation+int(g.RotationProgress)) * math.Pi / 180
-	geom := ebiten.GeoM{}
-	geom.Translate(-392, -392)
-	geom.Rotate(angle)
-	geom.Translate(392, 392)
 
 	for y := 0; y < 49; y++ {
 		for x := 0; x < 49; x++ {
 			if g.Grid[y][x].Filled {
 				op := &ebiten.DrawImageOptions{}
-				op.GeoM = geom
 				op.GeoM.Translate(float64(x*size), float64(y*size))
 				rect := ebiten.NewImage(size, size)
 				rect.Fill(g.Grid[y][x].Color)
@@ -403,7 +366,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 					gx := g.Active.Pos.X + x
 					gy := g.Active.Pos.Y + y
 					op := &ebiten.DrawImageOptions{}
-					op.GeoM = geom
 					op.GeoM.Translate(float64(gx*size), float64(gy*size))
 					rect := ebiten.NewImage(size, size)
 					rect.Fill(g.Active.Color)
